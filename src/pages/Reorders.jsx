@@ -614,7 +614,7 @@ const Finances = () => {
   }
 
   return (
-    <div className="page-content">
+    <div className="page-content finances-page-content">
       {/* Notification Popup */}
       {notification && (
         <div className={`notification-popup ${notification.type}`}>
@@ -639,6 +639,7 @@ const Finances = () => {
           className="month-nav-arrow" 
           onClick={() => navigateMonth('prev')}
           disabled={loading}
+          title="Previous Month"
         >
           ←
         </button>
@@ -649,6 +650,7 @@ const Finances = () => {
           className="month-nav-arrow" 
           onClick={() => navigateMonth('next')}
           disabled={loading}
+          title="Next Month"
         >
           →
         </button>

@@ -172,7 +172,7 @@ export class DatabaseService {
       // Handle COUNT queries
       if (lowerQuery.includes('count(*)')) {
         // Add WHERE conditions for count queries
-        if (lowerQuery.includes('where quantity < threshold')) {
+        if (lowerQuery.includes('where quantity <= threshold')) {
           // For low stock items, we need to use a custom filter
           console.log('Fetching all items for low stock comparison...')
           const { data: allItems, error } = await this.client.from(this.tableName).select('quantity, threshold')
@@ -183,8 +183,10 @@ export class DatabaseService {
           }
           
           console.log('Fetched items for low stock check:', allItems?.length || 0)
-          const lowStockCount = allItems?.filter(item => item.quantity < item.threshold).length || 0
-          return [{ count: lowStockCount, low_stock_items: lowStockCount, total_items: lowStockCount }]
+          const lowStockCount = allItems?.filter(item => 
+            item.quantity <= item.threshold && item.threshold > 0
+          ).length || 0
+          return [{ low_stock_count: lowStockCount, count: lowStockCount }]
         }
         
         let query = this.client.from(this.tableName).select('*', { count: 'exact', head: true })
@@ -206,6 +208,20 @@ export class DatabaseService {
       }
       
       // Handle SUM queries
+      if (lowerQuery.includes('sum(quantity)')) {
+        console.log('Fetching data for quantity SUM query...')
+        const { data, error } = await this.client.from(this.tableName).select('quantity')
+        
+        if (error) {
+          console.error('Supabase quantity SUM error:', error)
+          throw new Error(`Database error: ${error.message}`)
+        }
+        
+        console.log('Quantity SUM query data length:', data?.length || 0)
+        const sum = data?.reduce((acc, item) => acc + (parseFloat(item.quantity) || 0), 0) || 0
+        return [{ total_quantity: sum, sum_quantity: sum }]
+      }
+      
       if (lowerQuery.includes('sum(total_stock_value)')) {
         console.log('Fetching data for SUM query...')
         const { data, error } = await this.client.from(this.tableName).select('total_stock_value')
@@ -267,6 +283,36 @@ export class DatabaseService {
         return [{ avg_quantity: avg, avg_stock_level: avg }]
       }
       
+      // Handle GROUP BY queries for categories
+      if (lowerQuery.includes('group by category')) {
+        console.log('Fetching data for category GROUP BY query...')
+        const { data, error } = await this.client.from(this.tableName).select('category, total_stock_value')
+        
+        if (error) {
+          console.error('Supabase category GROUP BY error:', error)
+          throw new Error(`Database error: ${error.message}`)
+        }
+        
+        console.log('Category GROUP BY query data length:', data?.length || 0)
+        
+        // Group by category and sum values
+        const categoryTotals = {}
+        data?.forEach(item => {
+          const category = item.category || 'Unknown'
+          const value = parseFloat(item.total_stock_value) || 0
+          categoryTotals[category] = (categoryTotals[category] || 0) + value
+        })
+        
+        // Convert to array format
+        const result = Object.entries(categoryTotals).map(([category, value]) => ({
+          category: category,
+          category_value: value
+        }))
+        
+        console.log('Category totals:', result)
+        return result
+      }
+
       if (lowerQuery.includes('avg(margin_percent)')) {
         console.log('Fetching data for AVG margin percent query...')
         const { data, error } = await this.client.from(this.tableName).select('margin_percent')

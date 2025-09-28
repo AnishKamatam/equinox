@@ -43,20 +43,7 @@ const Header = () => {
           <div className="nav-brand">
             <h1 className="logo">EQUINOX</h1>
           </div>
-          <nav className="nav-menu">
-            <a href="#features" className="nav-link">Features</a>
-            <a href="#pricing" className="nav-link">Pricing</a>
-            <a href="#about" className="nav-link">About</a>
-            <a href="#contact" className="nav-link">Contact</a>
-          </nav>
           <div className="nav-actions">
-            <button 
-              className="theme-toggle"
-              onClick={toggleTheme}
-              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-            >
-              {theme === 'light' ? '🌙' : '☀️'}
-            </button>
             {user ? (
               <>
                 <span className="user-email">Welcome, {user.email}</span>
@@ -70,7 +57,7 @@ const Header = () => {
                   Login
                 </button>
                 <button className="btn-demo" onClick={handleSignup}>
-                  Sign Up
+                  Request Demo
                 </button>
               </>
             )}

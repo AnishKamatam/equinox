@@ -715,8 +715,8 @@ const Reports = () => {
         
         try {
           sqlQuery = await geminiService.generateSQL(currentQuery)
-          console.log('Generated SQL:', sqlQuery)
-          
+        console.log('Generated SQL:', sqlQuery)
+        
         databaseService.validateQuery(sqlQuery)
           queryResults = await databaseService.executeQuery(sqlQuery)
         } catch (sqlError) {

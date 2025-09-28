@@ -17,8 +17,6 @@ import './App.css'
 const LandingPage = () => (
   <>
     <Header />
-    <Hero />
-    <Features />
   </>
 )
 
