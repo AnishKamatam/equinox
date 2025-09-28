@@ -44,10 +44,13 @@ const Finances = () => {
   const [error, setError] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth())
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
+  const [reorderTransactions, setReorderTransactions] = useState([])
+  const [transactionLoading, setTransactionLoading] = useState(false)
 
   useEffect(() => {
     fetchFinancialMetrics()
     fetchChartData()
+    fetchReorderTransactions()
   }, [selectedMonth, selectedYear])
 
   const fetchFinancialMetrics = async () => {
@@ -87,7 +90,7 @@ const Finances = () => {
       }
       
       setMetrics({
-        totalInventoryValue: baseMetrics.totalInventoryValue, // Keep inventory value constant
+        totalInventoryValue: Math.round(baseMetrics.totalInventoryValue * monthMultiplier), // Scale inventory with seasonal demand
         potentialRevenue: Math.round(baseMetrics.potentialRevenue * monthMultiplier),
         profitMargin: baseMetrics.profitMargin * (0.95 + (monthMultiplier - 1) * 0.1), // Slight margin variation
         stockTurnoverRate: baseMetrics.stockTurnoverRate * monthMultiplier,
@@ -263,8 +266,8 @@ const Finances = () => {
       const analysisData = {
         weeklySalesData,
         costVsRevenue: {
-          totalCost: Math.round(totalCost),
-          totalRevenue: Math.round(totalRevenue)
+          totalCost: Math.round(totalCost * monthMultiplier),
+          totalRevenue: Math.round(totalRevenue * monthMultiplier)
         },
         profitTrends,
         projectedRevenue
@@ -444,6 +447,96 @@ const Finances = () => {
     return seasonalFactors[selectedMonth] || 1.0
   }
 
+  const fetchReorderTransactions = async () => {
+    try {
+      setTransactionLoading(true)
+      
+      // Query for low stock items - more flexible approach
+      const lowStockQuery = `
+        SELECT item_name, category, quantity, reorder_level, unit_cost, selling_price, 
+               supplier, predicted_demand_next_7d, weekly_sales_volume
+        FROM Inventory 
+        WHERE quantity < 20
+        ORDER BY quantity ASC, predicted_demand_next_7d DESC
+        LIMIT 8
+      `
+      
+      const lowStockItems = await databaseService.executeQuery(lowStockQuery)
+      
+      console.log('Low stock items found:', lowStockItems.length)
+      console.log('Sample items:', lowStockItems.slice(0, 3))
+      
+      // Calculate reorder suggestions for each item
+      const transactions = lowStockItems.map((item, index) => {
+        const currentStock = item.quantity || 0
+        const reorderLevel = item.reorder_level !== null && item.reorder_level !== undefined ? item.reorder_level : 20
+        const weeklyDemand = parseFloat(item.weekly_sales_volume) || parseFloat(item.predicted_demand_next_7d) / 7 || 2
+        
+        // Calculate suggested reorder quantity (2-4 weeks of demand)
+        const weeksOfStock = 3 // Target 3 weeks of stock
+        const demandBasedQuantity = Math.ceil(weeklyDemand * weeksOfStock)
+        const levelBasedQuantity = reorderLevel - currentStock
+        const suggestedQuantity = Math.max(
+          demandBasedQuantity,
+          levelBasedQuantity,
+          10 // Minimum order of 10
+        )
+        
+        const unitCost = parseFloat(item.unit_cost) || 5.0 // Default unit cost if missing
+        const totalCost = suggestedQuantity * unitCost
+        
+        // Debug logging for first item
+        if (index === 0) {
+          console.log('Debug first item:', {
+            itemName: item.item_name,
+            currentStock,
+            reorderLevel,
+            weeklyDemand,
+            suggestedQuantity,
+            unitCost,
+            totalCost,
+            rawItem: item
+          })
+        }
+        
+        return {
+          id: `reorder-${index}`,
+          itemName: item.item_name,
+          category: item.category,
+          currentStock,
+          reorderLevel,
+          suggestedQuantity,
+          unitCost,
+          totalCost,
+          supplier: item.supplier || 'Unknown Supplier',
+          urgency: currentStock === 0 ? 'critical' : currentStock <= reorderLevel * 0.5 ? 'high' : 'medium',
+          status: 'pending',
+          weeklyDemand: Math.round(weeklyDemand * 10) / 10
+        }
+      })
+      
+      setReorderTransactions(transactions)
+      
+    } catch (err) {
+      console.error('Error fetching reorder transactions:', err)
+    } finally {
+      setTransactionLoading(false)
+    }
+  }
+
+  const handleTransactionAction = (transactionId, action) => {
+    setReorderTransactions(prev => 
+      prev.map(transaction => 
+        transaction.id === transactionId 
+          ? { ...transaction, status: action }
+          : transaction
+      )
+    )
+    
+    // Here you could also send the approval/denial to your backend
+    console.log(`Transaction ${transactionId} ${action}`)
+  }
+
   if (loading) {
     return (
       <div className="page-content">
@@ -545,6 +638,145 @@ const Finances = () => {
             </div>
           </div>
           <div className="finance-card-value">{formatCurrency(metrics.outOfStockLoss)}</div>
+        </div>
+      </div>
+
+      {/* Recent Transactions Section */}
+      <div className="transactions-section">
+        <div className="transactions-grid-two">
+          <div className="transactions-card">
+            <div className="transactions-card-header">
+              <h3 className="transactions-card-title">Recent Transactions</h3>
+              <p className="transactions-card-description">Low stock items requiring reorder approval</p>
+            </div>
+            
+            <div className="transactions-list">
+              {transactionLoading ? (
+                <div className="transactions-loading">
+                  <div className="loading-spinner"></div>
+                  <p>Loading reorder suggestions...</p>
+                </div>
+              ) : reorderTransactions.length === 0 ? (
+                <div className="transactions-empty">
+                  <p>No items require reordering at this time</p>
+                </div>
+              ) : (
+                <>
+                  {reorderTransactions.map((transaction, index) => (
+                    <div key={transaction.id} className={`transaction-item ${transaction.urgency}`}>
+                      <div className="transaction-row">
+                        <div className="transaction-main">
+                          <div className="transaction-name-section">
+                            <h4 className="transaction-item-name">{transaction.itemName}</h4>
+                            <span className="transaction-category">{transaction.category}</span>
+                            <div className={`urgency-badge ${transaction.urgency}`}>
+                              {transaction.urgency}
+                            </div>
+                          </div>
+                          
+                          <div className="transaction-details-inline">
+                            <span className="detail-item">Stock: {transaction.currentStock}/{transaction.reorderLevel}</span>
+                            <span className="detail-item">Qty: {transaction.suggestedQuantity}</span>
+                            <span className="detail-item cost">{formatCurrency(transaction.totalCost)}</span>
+                          </div>
+                        </div>
+                        
+                        <div className="transaction-actions">
+                          {transaction.status === 'pending' ? (
+                            <>
+                              <button 
+                                className="btn-approve-small"
+                                onClick={() => handleTransactionAction(transaction.id, 'approved')}
+                              >
+                                Approve
+                              </button>
+                              <button 
+                                className="btn-deny-small"
+                                onClick={() => handleTransactionAction(transaction.id, 'denied')}
+                              >
+                                Deny
+                              </button>
+                            </>
+                          ) : (
+                            <div className={`status-badge-small ${transaction.status}`}>
+                              {transaction.status === 'approved' ? '✓' : '✗'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {index < reorderTransactions.length - 1 && <div className="transaction-divider"></div>}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="summary-card">
+            <div className="summary-card-header">
+              <h3 className="summary-card-title">Reorder Summary</h3>
+              <p className="summary-card-description">Overview of pending reorder requests</p>
+            </div>
+            
+            <div className="summary-content">
+              <div className="summary-stats">
+                <div className="summary-stat">
+                  <div className="stat-value">{reorderTransactions.filter(t => t.status === 'pending').length}</div>
+                  <div className="stat-label">Pending</div>
+                </div>
+                <div className="summary-stat">
+                  <div className="stat-value">{reorderTransactions.filter(t => t.status === 'approved').length}</div>
+                  <div className="stat-label">Approved</div>
+                </div>
+                <div className="summary-stat">
+                  <div className="stat-value">{reorderTransactions.filter(t => t.status === 'denied').length}</div>
+                  <div className="stat-label">Denied</div>
+                </div>
+              </div>
+
+              <div className="summary-totals">
+                <div className="summary-total-item">
+                  <span className="total-label">Total Cost (Pending):</span>
+                  <span className="total-value">
+                    {formatCurrency(
+                      reorderTransactions
+                        .filter(t => t.status === 'pending')
+                        .reduce((sum, t) => sum + t.totalCost, 0)
+                    )}
+                  </span>
+                </div>
+                <div className="summary-total-item">
+                  <span className="total-label">Total Items:</span>
+                  <span className="total-value">
+                    {reorderTransactions
+                      .filter(t => t.status === 'pending')
+                      .reduce((sum, t) => sum + t.suggestedQuantity, 0)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="urgency-breakdown">
+                <h4 className="breakdown-title">Urgency Breakdown</h4>
+                <div className="urgency-items">
+                  <div className="urgency-item critical">
+                    <div className="urgency-dot critical"></div>
+                    <span className="urgency-count">{reorderTransactions.filter(t => t.urgency === 'critical').length}</span>
+                    <span className="urgency-text">Critical</span>
+                  </div>
+                  <div className="urgency-item high">
+                    <div className="urgency-dot high"></div>
+                    <span className="urgency-count">{reorderTransactions.filter(t => t.urgency === 'high').length}</span>
+                    <span className="urgency-text">High</span>
+                  </div>
+                  <div className="urgency-item medium">
+                    <div className="urgency-dot medium"></div>
+                    <span className="urgency-count">{reorderTransactions.filter(t => t.urgency === 'medium').length}</span>
+                    <span className="urgency-text">Medium</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
