@@ -53,9 +53,8 @@ export class DatabaseService {
           }
         }
         
-        console.error('❌ No accessible tables found. Using mock data.')
+        console.error('❌ No accessible tables found.')
         this.hasRealData = false
-        this.mockData = this.generateMockData()
         
       } else {
         console.log(`✅ Successfully connected to table: ${this.tableName}`)
@@ -71,21 +70,18 @@ export class DatabaseService {
           if (sampleError) {
             console.error('❌ Sample data fetch failed:', sampleError)
             this.hasRealData = false
-            this.mockData = this.generateMockData()
           } else {
             console.log('📋 Sample data structure:', sampleData?.[0] ? Object.keys(sampleData[0]) : 'No structure')
             this.hasRealData = true
           }
         } else {
-          console.log('⚠️ Table exists but is empty - using mock data')
+          console.log('⚠️ Table exists but appears empty - will still try real queries')
           this.hasRealData = false
-          this.mockData = this.generateMockData()
         }
       }
     } catch (err) {
       console.error('💥 Connection test error:', err)
       this.hasRealData = false
-      this.mockData = this.generateMockData()
     }
   }
 
@@ -165,10 +161,9 @@ export class DatabaseService {
     try {
       console.log('Executing SQL Query:', sqlQuery)
       
-      // If no real data, use mock data
+      // Always use real data since we have 380 items connected
       if (!this.hasRealData) {
-        console.log('📊 Using mock data (table is empty)')
-        return this.executeMockQuery(sqlQuery)
+        console.log('⚠️ No real data detected, but continuing with real database queries')
       }
       
       // Convert SQL to Supabase query
@@ -222,24 +217,115 @@ export class DatabaseService {
         
         console.log('SUM query data length:', data?.length || 0)
         const sum = data?.reduce((acc, item) => acc + (parseFloat(item.total_stock_value) || 0), 0) || 0
-        return [{ sum_total_stock_value: sum, total_value: sum }]
+        return [{ sum_total_stock_value: sum, total_value: sum, total_inventory_value: sum }]
+      }
+      
+      if (lowerQuery.includes('sum(potential_revenue)')) {
+        console.log('Fetching data for potential revenue SUM query...')
+        const { data, error } = await this.client.from(this.tableName).select('potential_revenue')
+        
+        if (error) {
+          console.error('Supabase potential revenue SUM error:', error)
+          throw new Error(`Database error: ${error.message}`)
+        }
+        
+        console.log('Potential revenue SUM query data length:', data?.length || 0)
+        const sum = data?.reduce((acc, item) => acc + (parseFloat(item.potential_revenue) || 0), 0) || 0
+        return [{ sum_potential_revenue: sum, total_potential_revenue: sum }]
+      }
+      
+      if (lowerQuery.includes('sum(days_out_of_stock * selling_price)')) {
+        console.log('Fetching data for out-of-stock loss calculation...')
+        const { data, error } = await this.client.from(this.tableName).select('days_out_of_stock, selling_price')
+        
+        if (error) {
+          console.error('Supabase out-of-stock loss error:', error)
+          throw new Error(`Database error: ${error.message}`)
+        }
+        
+        console.log('Out-of-stock loss query data length:', data?.length || 0)
+        const sum = data?.reduce((acc, item) => {
+          const days = parseFloat(item.days_out_of_stock) || 0
+          const price = parseFloat(item.selling_price) || 0
+          return acc + (days * price)
+        }, 0) || 0
+        return [{ out_of_stock_loss: sum, sum_loss: sum }]
       }
       
       // Handle AVG queries
       if (lowerQuery.includes('avg(quantity)')) {
-        console.log('Fetching data for AVG query...')
+        console.log('Fetching data for AVG quantity query...')
         const { data, error } = await this.client.from(this.tableName).select('quantity')
         
         if (error) {
-          console.error('Supabase AVG error:', error)
+          console.error('Supabase AVG quantity error:', error)
           throw new Error(`Database error: ${error.message}`)
         }
         
-        console.log('AVG query data length:', data?.length || 0)
+        console.log('AVG quantity query data length:', data?.length || 0)
         const avg = data?.reduce((acc, item) => acc + (item.quantity || 0), 0) / (data?.length || 1) || 0
         return [{ avg_quantity: avg, avg_stock_level: avg }]
       }
       
+      if (lowerQuery.includes('avg(margin_percent)')) {
+        console.log('Fetching data for AVG margin percent query...')
+        const { data, error } = await this.client.from(this.tableName).select('margin_percent')
+        
+        if (error) {
+          console.error('Supabase AVG margin error:', error)
+          throw new Error(`Database error: ${error.message}`)
+        }
+        
+        console.log('AVG margin query data length:', data?.length || 0)
+        const avg = data?.reduce((acc, item) => acc + (parseFloat(item.margin_percent) || 0), 0) / (data?.length || 1) || 0
+        return [{ avg_margin_percent: avg, avg_margin: avg }]
+      }
+      
+      if (lowerQuery.includes('avg(stock_turnover_rate)')) {
+        console.log('Fetching data for AVG stock turnover rate query...')
+        const { data, error } = await this.client.from(this.tableName).select('stock_turnover_rate')
+        
+        if (error) {
+          console.error('Supabase AVG turnover error:', error)
+          throw new Error(`Database error: ${error.message}`)
+        }
+        
+        console.log('AVG turnover query data length:', data?.length || 0)
+        const avg = data?.reduce((acc, item) => acc + (parseFloat(item.stock_turnover_rate) || 0), 0) / (data?.length || 1) || 0
+        return [{ avg_turnover_rate: avg, avg_stock_turnover_rate: avg }]
+      }
+      
+      // Handle GROUP BY queries
+      if (lowerQuery.includes('group by')) {
+        if (lowerQuery.includes('group by category')) {
+          console.log('Fetching data for GROUP BY category query...')
+          const { data, error } = await this.client.from(this.tableName).select('category, margin_percent')
+          
+          if (error) {
+            console.error('Supabase GROUP BY error:', error)
+            throw new Error(`Database error: ${error.message}`)
+          }
+          
+          // Group by category and calculate averages
+          const grouped = {}
+          data?.forEach(item => {
+            const category = item.category || 'Unknown'
+            if (!grouped[category]) {
+              grouped[category] = { total: 0, count: 0 }
+            }
+            grouped[category].total += parseFloat(item.margin_percent) || 0
+            grouped[category].count += 1
+          })
+          
+          const result = Object.keys(grouped).map(category => ({
+            category,
+            avg_margin: grouped[category].total / grouped[category].count
+          }))
+          
+          return result.slice(0, 10) // Limit to 10 categories
+        }
+      }
+
       // Handle SELECT queries
       let query = this.client.from(this.tableName).select('*')
       
@@ -307,65 +393,6 @@ export class DatabaseService {
     }
   }
 
-  // Execute query against mock data when real table is empty
-  executeMockQuery(sqlQuery) {
-    const lowerQuery = sqlQuery.toLowerCase()
-    
-    let results = [...this.mockData]
-    
-    // Handle basic WHERE conditions
-    if (lowerQuery.includes('where')) {
-      if (lowerQuery.includes('quantity <') || lowerQuery.includes('low stock')) {
-        results = results.filter(item => item.quantity < item.threshold)
-      }
-      if (lowerQuery.includes('status = \'active\'')) {
-        results = results.filter(item => item.status === 'active')
-      }
-      if (lowerQuery.includes('expired = true')) {
-        results = results.filter(item => item.expired === true)
-      }
-      if (lowerQuery.includes('quantity = 0')) {
-        results = results.filter(item => item.quantity === 0)
-      }
-    }
-    
-    // Handle ORDER BY
-    if (lowerQuery.includes('order by')) {
-      if (lowerQuery.includes('quantity desc')) {
-        results.sort((a, b) => b.quantity - a.quantity)
-      }
-      if (lowerQuery.includes('selling_price desc')) {
-        results.sort((a, b) => b.selling_price - a.selling_price)
-      }
-      if (lowerQuery.includes('sales_velocity desc')) {
-        results.sort((a, b) => b.sales_velocity - a.sales_velocity)
-      }
-    }
-    
-    // Handle LIMIT
-    const limitMatch = lowerQuery.match(/limit (\d+)/)
-    if (limitMatch) {
-      const limit = parseInt(limitMatch[1])
-      results = results.slice(0, limit)
-    }
-    
-    // Handle basic aggregations
-    if (lowerQuery.includes('count(*)')) {
-      return [{ count: results.length, total_items: results.length, low_stock_items: results.length, out_of_stock: results.length }]
-    }
-    
-    if (lowerQuery.includes('sum(total_stock_value)')) {
-      const sum = results.reduce((acc, item) => acc + parseFloat(item.total_stock_value), 0)
-      return [{ sum_total_stock_value: sum, total_value: sum }]
-    }
-    
-    if (lowerQuery.includes('avg(quantity)')) {
-      const avg = results.reduce((acc, item) => acc + item.quantity, 0) / results.length
-      return [{ avg_quantity: avg, avg_stock_level: avg }]
-    }
-    
-    return results
-  }
 
   // Helper method to validate SQL queries (basic security)
   validateQuery(sqlQuery) {
