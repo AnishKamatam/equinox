@@ -1,14 +1,680 @@
 import React, { useState } from 'react'
-import { Send, Package, BarChart3, Truck, TestTube } from 'lucide-react'
+import { ArrowUp, Package, BarChart3, Truck } from 'lucide-react'
 import { geminiService } from '../services/geminiService'
 import { databaseService } from '../services/databaseService'
-import MCPTest from '../components/MCPTest'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js'
+import { Line, Bar, Pie, Doughnut } from 'react-chartjs-2'
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend
+)
 
 const Reports = () => {
   const [messages, setMessages] = useState([])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [showMCPTest, setShowMCPTest] = useState(false)
+
+  // Function to generate charts using Gemini AI analysis
+  const generateChartsWithGemini = async (fullTableData, userQuery) => {
+    try {
+      console.log('Using Gemini to analyze data and generate charts...')
+      
+      // Get Gemini's analysis of what charts to create
+      const analysis = await geminiService.analyzeDataAndGenerateCharts(fullTableData, userQuery)
+      console.log('Gemini analysis:', analysis)
+      
+      if (!analysis.charts || analysis.charts.length === 0) {
+        return { insights: analysis.insights, charts: [] }
+      }
+      
+      // Generate chart data for each suggested chart
+      const chartConfigs = []
+      for (const chartConfig of analysis.charts) {
+        const chartData = await geminiService.generateChartData(fullTableData, chartConfig)
+        
+        if (chartData && chartData.length > 0) {
+          const chartJsConfig = convertToChartJsFormat(chartData, chartConfig)
+          if (chartJsConfig) {
+            chartConfigs.push(chartJsConfig)
+          }
+        }
+      }
+      
+      return { insights: analysis.insights, charts: chartConfigs }
+    } catch (error) {
+      console.error('Error generating charts with Gemini:', error)
+      return { insights: 'I analyzed your data but had trouble creating visualizations.', charts: [] }
+    }
+  }
+
+  // Convert Gemini's chart data to Chart.js format
+  const convertToChartJsFormat = (chartData, chartConfig) => {
+    if (!chartData || chartData.length === 0) return null
+    
+    const labels = chartData.map(item => {
+      let label = item.label
+      // Truncate long labels
+      if (label && label.length > 20) {
+        label = label.substring(0, 17) + '...'
+      }
+      return label || 'Unknown'
+    })
+    
+    const values = chartData.map(item => item.value || 0)
+    
+    // Generate colors based on chart type
+    const colors = generateColors(chartData.length, chartConfig.type)
+    
+    const chartJsData = {
+      labels,
+      datasets: [{
+        label: chartConfig.title,
+        data: values,
+        backgroundColor: colors.background,
+        borderColor: colors.border,
+        borderWidth: chartConfig.type === 'pie' || chartConfig.type === 'doughnut' ? 3 : 2,
+        hoverBorderWidth: chartConfig.type === 'pie' || chartConfig.type === 'doughnut' ? 4 : 3
+      }]
+    }
+    
+    const options = {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: {
+        padding: {
+          top: 15,
+          bottom: 25,
+          left: 15,
+          right: 15
+        }
+      },
+      plugins: {
+        title: {
+          display: true,
+          text: chartConfig.title,
+          font: {
+            size: 16,
+            weight: '600',
+            family: 'Inter, system-ui, sans-serif'
+          },
+          color: '#1f2937',
+          padding: {
+            top: 5,
+            bottom: 15
+          }
+        },
+        legend: {
+          display: chartConfig.type === 'pie' || chartConfig.type === 'doughnut',
+          position: 'bottom',
+          labels: {
+            padding: 12,
+            usePointStyle: true,
+            font: {
+              size: 11,
+              family: 'Inter, system-ui, sans-serif'
+            },
+            color: '#4b5563',
+            boxWidth: 12,
+            boxHeight: 12
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          titleColor: '#ffffff',
+          bodyColor: '#ffffff',
+          borderColor: 'rgba(0, 0, 0, 0.1)',
+          borderWidth: 1,
+          cornerRadius: 6,
+          displayColors: true,
+          callbacks: {
+            label: function(context) {
+              if (chartConfig.type === 'pie' || chartConfig.type === 'doughnut') {
+                const label = context.label || ''
+                const value = context.parsed || 0
+                const total = context.dataset.data.reduce((a, b) => a + b, 0)
+                const percentage = ((value / total) * 100).toFixed(1)
+                return `${label}: ${value} (${percentage}%)`
+              }
+              return `${context.label}: ${context.parsed}`
+            }
+          }
+        }
+      }
+    }
+    
+    // Add scales for bar and line charts
+    if (chartConfig.type === 'bar' || chartConfig.type === 'line') {
+      options.scales = {
+        x: {
+          ticks: {
+            maxRotation: 35,
+            minRotation: 0,
+            font: {
+              size: 10,
+              family: 'Inter, system-ui, sans-serif'
+            },
+            color: '#6b7280',
+            maxTicksLimit: 10
+          },
+          grid: {
+            display: false
+          },
+          border: {
+            color: '#e5e7eb'
+          }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            font: {
+              size: 10,
+              family: 'Inter, system-ui, sans-serif'
+            },
+            color: '#6b7280',
+            callback: function(value) {
+              // Format large numbers
+              if (value >= 1000000) {
+                return (value / 1000000).toFixed(1) + 'M'
+              } else if (value >= 1000) {
+                return (value / 1000).toFixed(1) + 'K'
+              }
+              return value
+            }
+          },
+          grid: {
+            color: 'rgba(0, 0, 0, 0.05)',
+            lineWidth: 1
+          },
+          border: {
+            color: '#e5e7eb'
+          }
+        }
+      }
+    }
+    
+    // Add line-specific styling
+    if (chartConfig.type === 'line') {
+      chartJsData.datasets[0].tension = 0.4
+      chartJsData.datasets[0].fill = true
+    }
+    
+    return {
+      type: chartConfig.type,
+      data: chartJsData,
+      options: options,
+      description: chartConfig.description
+    }
+  }
+  
+  // Generate colors for charts
+  const generateColors = (count, chartType) => {
+    const baseColors = [
+      '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6',
+      '#f97316', '#06b6d4', '#84cc16', '#ec4899', '#6366f1',
+      '#14b8a6', '#f43f5e', '#a855f7', '#22c55e', '#eab308'
+    ]
+    
+    const background = []
+    const border = []
+    
+    for (let i = 0; i < count; i++) {
+      const color = baseColors[i % baseColors.length]
+      
+      if (chartType === 'pie' || chartType === 'doughnut') {
+        background.push(color)
+        border.push('#ffffff')
+      } else {
+        // For bar and line charts, use semi-transparent background
+        const rgb = hexToRgb(color)
+        background.push(`rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.8)`)
+        border.push(color)
+      }
+    }
+    
+    return { background, border }
+  }
+  
+  // Helper function to convert hex to RGB
+  const hexToRgb = (hex) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : null
+  }
+
+  // Create fallback charts when Gemini analysis fails
+  const createFallbackCharts = async (fullTableData, suggestionTitle) => {
+    const charts = []
+    
+    try {
+      if (suggestionTitle.toLowerCase().includes('supply chain') || suggestionTitle.toLowerCase().includes('optimize')) {
+        // Supply chain optimization charts
+        
+        // Chart 1: Stock Health Distribution
+        const stockHealthData = {}
+        fullTableData.forEach(item => {
+          const health = item.stock_health || 'unknown'
+          stockHealthData[health] = (stockHealthData[health] || 0) + 1
+        })
+        
+        const stockHealthChartData = Object.keys(stockHealthData).map(key => ({
+          label: key,
+          value: stockHealthData[key]
+        }))
+        
+        if (stockHealthChartData.length > 0) {
+          charts.push(convertToChartJsFormat(stockHealthChartData, {
+            type: 'pie',
+            title: 'Stock Health Distribution',
+            description: 'Shows the distribution of stock health across your inventory'
+          }))
+        }
+        
+        // Chart 2: Top Suppliers by Item Count
+        const supplierData = {}
+        fullTableData.forEach(item => {
+          const supplier = item.supplier_name || 'Unknown'
+          supplierData[supplier] = (supplierData[supplier] || 0) + 1
+        })
+        
+        const supplierChartData = Object.keys(supplierData)
+          .map(key => ({ label: key, value: supplierData[key] }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 10)
+        
+        if (supplierChartData.length > 0) {
+          charts.push(convertToChartJsFormat(supplierChartData, {
+            type: 'bar',
+            title: 'Top Suppliers by Item Count',
+            description: 'Shows which suppliers provide the most items in your inventory'
+          }))
+        }
+        
+      } else if (suggestionTitle.toLowerCase().includes('performance') || suggestionTitle.toLowerCase().includes('visualize')) {
+        // Performance visualization charts
+        
+        // Chart 1: Category Distribution
+        const categoryData = {}
+        fullTableData.forEach(item => {
+          const category = item.category || 'Unknown'
+          categoryData[category] = (categoryData[category] || 0) + 1
+        })
+        
+        const categoryChartData = Object.keys(categoryData).map(key => ({
+          label: key,
+          value: categoryData[key]
+        }))
+        
+        if (categoryChartData.length > 0) {
+          charts.push(convertToChartJsFormat(categoryChartData, {
+            type: 'pie',
+            title: 'Inventory by Category',
+            description: 'Distribution of items across different categories'
+          }))
+        }
+        
+        // Chart 2: Top Items by Sales Velocity
+        const topItems = fullTableData
+          .filter(item => item.sales_velocity && parseFloat(item.sales_velocity) > 0)
+          .sort((a, b) => parseFloat(b.sales_velocity) - parseFloat(a.sales_velocity))
+          .slice(0, 10)
+          .map(item => ({
+            label: item.item_name || 'Unknown Item',
+            value: parseFloat(item.sales_velocity) || 0
+          }))
+        
+        if (topItems.length > 0) {
+          charts.push(convertToChartJsFormat(topItems, {
+            type: 'bar',
+            title: 'Top Items by Sales Velocity',
+            description: 'Items with the highest sales velocity'
+          }))
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error creating fallback charts:', error)
+    }
+    
+    return charts
+  }
+
+  // Legacy function for backward compatibility (keeping existing chart generation)
+  const generateChartFromQuery = (query, queryResults) => {
+    const lowerQuery = query.toLowerCase()
+    
+    // Pie/Doughnut charts for percentages, categories, distribution
+    if (lowerQuery.includes('percentage') || lowerQuery.includes('distribution') || 
+        lowerQuery.includes('category') || lowerQuery.includes('breakdown') ||
+        lowerQuery.includes('proportion') || lowerQuery.includes('share')) {
+      return generatePieChart(queryResults, query)
+    }
+    
+    // Bar charts for comparisons, top items, rankings
+    if (lowerQuery.includes('top') || lowerQuery.includes('best') || 
+        lowerQuery.includes('worst') || lowerQuery.includes('compare') ||
+        lowerQuery.includes('ranking') || lowerQuery.includes('most') ||
+        lowerQuery.includes('least')) {
+      return generateBarChart(queryResults, query)
+    }
+    
+    // Line charts for trends, over time, historical
+    if (lowerQuery.includes('trend') || lowerQuery.includes('over time') || 
+        lowerQuery.includes('historical') || lowerQuery.includes('monthly') ||
+        lowerQuery.includes('weekly') || lowerQuery.includes('daily')) {
+      return generateLineChart(queryResults, query)
+    }
+    
+    // Default to bar chart for general data
+    if (queryResults && queryResults.length > 0) {
+      return generateBarChart(queryResults, query)
+    }
+    
+    return null
+  }
+
+  // Generate pie chart for categorical data
+  const generatePieChart = (data, query) => {
+    if (!data || data.length === 0) return null
+    
+    // Try to find category and value columns
+    const firstRow = data[0]
+    const columns = Object.keys(firstRow)
+    
+    // Look for common category column names - prioritize readable names
+    const categoryCol = columns.find(col => 
+      col.toLowerCase() === 'category' ||
+      col.toLowerCase() === 'brand' ||
+      col.toLowerCase() === 'type'
+    ) || columns.find(col => 
+      col.toLowerCase().includes('category') || 
+      col.toLowerCase().includes('name') ||
+      col.toLowerCase().includes('type') ||
+      col.toLowerCase().includes('brand')
+    ) || columns[0]
+    
+    // Look for common value column names - prioritize 'count' for category distributions
+    const valueCol = columns.find(col => 
+      col.toLowerCase() === 'count' ||
+      col.toLowerCase() === 'total' ||
+      col.toLowerCase() === 'sum'
+    ) || columns.find(col => 
+      col.toLowerCase().includes('count') ||
+      col.toLowerCase().includes('total') ||
+      col.toLowerCase().includes('sum') ||
+      col.toLowerCase().includes('quantity') ||
+      col.toLowerCase().includes('value')
+    ) || columns[1]
+    
+    // Sort by value and take top 8 for readability
+    const sortedData = [...data]
+      .sort((a, b) => (parseFloat(b[valueCol]) || 0) - (parseFloat(a[valueCol]) || 0))
+      .slice(0, 8)
+    
+    const labels = sortedData.map(row => {
+      let label = row[categoryCol] || 'Unknown'
+      // Truncate long labels
+      if (label.length > 20) {
+        label = label.substring(0, 17) + '...'
+      }
+      return label
+    })
+    
+    const values = sortedData.map(row => parseFloat(row[valueCol]) || 0)
+    
+    const chartData = {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: [
+          '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+          '#FF9F40', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4'
+        ],
+        borderWidth: 3,
+        borderColor: '#fff',
+        hoverBorderWidth: 4,
+        hoverBorderColor: '#333'
+      }]
+    }
+    
+    return {
+      type: 'pie',
+      data: chartData,
+      options: {
+        responsive: true,
+        plugins: {
+          title: {
+            display: true,
+            text: query,
+            font: {
+              size: 16,
+              weight: 'bold'
+            }
+          },
+          legend: {
+            position: 'bottom',
+            labels: {
+              padding: 20,
+              usePointStyle: true
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const label = context.label || ''
+                const value = context.parsed || 0
+                const total = context.dataset.data.reduce((a, b) => a + b, 0)
+                const percentage = ((value / total) * 100).toFixed(1)
+                return `${label}: ${value} (${percentage}%)`
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Generate bar chart for comparisons
+  const generateBarChart = (data, query) => {
+    if (!data || data.length === 0) return null
+    
+    const firstRow = data[0]
+    const columns = Object.keys(firstRow)
+    
+    // Find the best label column - prioritize item_name, then other readable names
+    const labelCol = columns.find(col => 
+      col.toLowerCase() === 'item_name' ||
+      col.toLowerCase() === 'product_name' ||
+      col.toLowerCase() === 'name'
+    ) || columns.find(col => 
+      col.toLowerCase().includes('name') || 
+      col.toLowerCase().includes('item') ||
+      col.toLowerCase().includes('category') ||
+      col.toLowerCase().includes('brand')
+    ) || columns[0]
+    
+    // Find the best value column
+    const valueCol = columns.find(col => 
+      col.toLowerCase().includes('sales_velocity') ||
+      col.toLowerCase().includes('velocity') ||
+      col.toLowerCase().includes('quantity') ||
+      col.toLowerCase().includes('price') ||
+      col.toLowerCase().includes('value') ||
+      col.toLowerCase().includes('count') ||
+      col.toLowerCase().includes('total') ||
+      col.toLowerCase().includes('revenue')
+    ) || columns[1]
+    
+    // Sort data by value and take top 10
+    const sortedData = [...data]
+      .sort((a, b) => (parseFloat(b[valueCol]) || 0) - (parseFloat(a[valueCol]) || 0))
+      .slice(0, 10)
+    
+    const labels = sortedData.map(row => {
+      let label = row[labelCol] || 'Unknown'
+      // Truncate long labels
+      if (label.length > 25) {
+        label = label.substring(0, 22) + '...'
+      }
+      return label
+    })
+    
+    const values = sortedData.map(row => parseFloat(row[valueCol]) || 0)
+    
+    const chartData = {
+      labels,
+      datasets: [{
+        label: valueCol.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        data: values,
+        backgroundColor: [
+          'rgba(54, 162, 235, 0.8)',
+          'rgba(255, 99, 132, 0.8)',
+          'rgba(255, 205, 86, 0.8)',
+          'rgba(75, 192, 192, 0.8)',
+          'rgba(153, 102, 255, 0.8)',
+          'rgba(255, 159, 64, 0.8)',
+          'rgba(199, 199, 199, 0.8)',
+          'rgba(83, 102, 255, 0.8)',
+          'rgba(255, 99, 255, 0.8)',
+          'rgba(99, 255, 132, 0.8)'
+        ],
+        borderColor: [
+          'rgba(54, 162, 235, 1)',
+          'rgba(255, 99, 132, 1)',
+          'rgba(255, 205, 86, 1)',
+          'rgba(75, 192, 192, 1)',
+          'rgba(153, 102, 255, 1)',
+          'rgba(255, 159, 64, 1)',
+          'rgba(199, 199, 199, 1)',
+          'rgba(83, 102, 255, 1)',
+          'rgba(255, 99, 255, 1)',
+          'rgba(99, 255, 132, 1)'
+        ],
+        borderWidth: 2
+      }]
+    }
+    
+    return {
+      type: 'bar',
+      data: chartData,
+      options: {
+        responsive: true,
+        plugins: {
+          title: {
+            display: true,
+            text: query,
+            font: {
+              size: 16,
+              weight: 'bold'
+            }
+          },
+          legend: {
+            display: false // Hide legend for cleaner look
+          }
+        },
+        scales: {
+          x: {
+            ticks: {
+              maxRotation: 45,
+              minRotation: 45
+            }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function(value) {
+                // Format large numbers
+                if (value >= 1000000) {
+                  return (value / 1000000).toFixed(1) + 'M'
+                } else if (value >= 1000) {
+                  return (value / 1000).toFixed(1) + 'K'
+                }
+                return value
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Generate line chart for trends
+  const generateLineChart = (data, query) => {
+    if (!data || data.length === 0) return null
+    
+    const firstRow = data[0]
+    const columns = Object.keys(firstRow)
+    
+    // Find date/time and value columns
+    const dateCol = columns.find(col => 
+      col.toLowerCase().includes('date') ||
+      col.toLowerCase().includes('time') ||
+      col.toLowerCase().includes('month') ||
+      col.toLowerCase().includes('week')
+    ) || columns[0]
+    
+    const valueCol = columns.find(col => 
+      col.toLowerCase().includes('value') ||
+      col.toLowerCase().includes('amount') ||
+      col.toLowerCase().includes('quantity') ||
+      col.toLowerCase().includes('count')
+    ) || columns[1]
+    
+    const labels = data.map(row => row[dateCol])
+    const values = data.map(row => parseFloat(row[valueCol]) || 0)
+    
+    const chartData = {
+      labels,
+      datasets: [{
+        label: valueCol.replace(/_/g, ' ').toUpperCase(),
+        data: values,
+        borderColor: 'rgba(75, 192, 192, 1)',
+        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+        tension: 0.4,
+        fill: true
+      }]
+    }
+    
+    return {
+      type: 'line',
+      data: chartData,
+      options: {
+        responsive: true,
+        plugins: {
+          title: {
+            display: true,
+            text: query
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true
+          }
+        }
+      }
+    }
+  }
 
   const handleSendMessage = async () => {
     if (inputValue.trim() && !isLoading) {
@@ -35,16 +701,38 @@ const Reports = () => {
         }
         setMessages(prev => [...prev, thinkingMessage])
         
-        // Generate SQL query using Gemini
-        const sqlQuery = await geminiService.generateSQL(currentQuery)
-        console.log('Generated SQL:', sqlQuery)
+        // Fetch full table data for Gemini analysis
+        const fullTableData = await databaseService.getFullTableData()
+        console.log('Fetched full table data:', fullTableData.length, 'rows')
         
-        // Validate and execute the query
+        // Use Gemini to analyze data and generate charts
+        const geminiAnalysis = await generateChartsWithGemini(fullTableData, currentQuery)
+        console.log('Gemini chart analysis:', geminiAnalysis)
+        
+        // Also generate SQL query and execute it for additional context
+        let queryResults = []
+        let sqlQuery = ''
+        
+        try {
+          sqlQuery = await geminiService.generateSQL(currentQuery)
+          console.log('Generated SQL:', sqlQuery)
+          
         databaseService.validateQuery(sqlQuery)
-        const queryResults = await databaseService.executeQuery(sqlQuery)
+          queryResults = await databaseService.executeQuery(sqlQuery)
+        } catch (sqlError) {
+          console.warn('SQL generation/execution failed:', sqlError.message)
+          // Continue with just Gemini analysis if SQL fails
+          sqlQuery = 'SQL generation failed - using data analysis only'
+          queryResults = []
+        }
         
-        // Generate AI insight from the results
-        const aiInsight = await geminiService.generateInsight(queryResults, currentQuery)
+        // Generate AI insight combining SQL results and Gemini analysis
+        let aiInsight = await geminiService.generateInsight(queryResults, currentQuery)
+        
+        // Append Gemini's insights if available
+        if (geminiAnalysis.insights) {
+          aiInsight += '\n\n**Data Analysis Insights:**\n' + geminiAnalysis.insights
+        }
         
         // Remove thinking message and add real response
         setMessages(prev => {
@@ -55,7 +743,9 @@ const Reports = () => {
             content: aiInsight,
             timestamp: new Date().toLocaleTimeString(),
             sqlQuery: sqlQuery,
-            queryResults: queryResults
+            queryResults: queryResults,
+            chartConfigs: geminiAnalysis.charts, // Multiple charts from Gemini
+            chartConfig: geminiAnalysis.charts?.[0] // Backward compatibility
           }]
         })
         
@@ -101,19 +791,13 @@ const Reports = () => {
     },
     {
       id: 3,
-      title: "Test MCP Connection",
-      description: "Test voice agent access to Supabase via MCP",
-      icon: TestTube
+      title: "Optimize supply chain",
+      description: "Recommendations for efficiency",
+      icon: Truck
     }
   ]
 
   const handleSuggestionClick = async (suggestion) => {
-    // Handle MCP Test specially
-    if (suggestion.title === "Test MCP Connection") {
-      setShowMCPTest(true);
-      return;
-    }
-    
     // Create user message
     const userMessage = {
       id: Date.now(),
@@ -165,10 +849,44 @@ const Reports = () => {
         
       } else {
         // For other suggestions, use the normal Gemini flow
+        try {
         const sqlQuery = await geminiService.generateSQL(suggestion.title)
         databaseService.validateQuery(sqlQuery)
         const queryResults = await databaseService.executeQuery(sqlQuery)
         aiResponse = await geminiService.generateInsight(queryResults, suggestion.title)
+        } catch (sqlError) {
+          console.warn('SQL generation failed for suggestion, using data analysis only:', sqlError.message)
+          // Fallback to just using the full table data analysis
+          aiResponse = `I've analyzed your inventory data for "${suggestion.title}". Let me provide insights based on your current inventory.`
+        }
+      }
+      
+      // Generate charts using Gemini for suggestions
+      let chartConfigs = []
+      try {
+        const fullTableData = await databaseService.getFullTableData()
+        const geminiAnalysis = await generateChartsWithGemini(fullTableData, suggestion.title)
+        chartConfigs = geminiAnalysis.charts || []
+        
+        // Append Gemini insights to the response
+        if (geminiAnalysis.insights) {
+          aiResponse += '\n\n**Data Analysis Insights:**\n' + geminiAnalysis.insights
+        }
+        
+        // If no charts were generated, create some default ones based on suggestion type
+        if (chartConfigs.length === 0) {
+          console.log('No charts generated by Gemini, creating fallback charts')
+          chartConfigs = await createFallbackCharts(fullTableData, suggestion.title)
+          }
+        } catch (err) {
+        console.log('Could not generate Gemini charts for suggestion:', err)
+        // Create fallback charts
+        try {
+          const fullTableData = await databaseService.getFullTableData()
+          chartConfigs = await createFallbackCharts(fullTableData, suggestion.title)
+        } catch (fallbackErr) {
+          console.log('Fallback chart generation also failed:', fallbackErr)
+        }
       }
       
       // Remove thinking message and add real response
@@ -178,7 +896,9 @@ const Reports = () => {
           id: Date.now() + 2,
           type: 'ai',
           content: aiResponse,
-          timestamp: new Date().toLocaleTimeString()
+          timestamp: new Date().toLocaleTimeString(),
+          chartConfigs: chartConfigs, // Multiple charts from Gemini
+          chartConfig: chartConfigs?.[0] // Backward compatibility
         }]
       })
       
@@ -198,30 +918,6 @@ const Reports = () => {
     } finally {
       setIsLoading(false)
     }
-  }
-
-  if (showMCPTest) {
-    return (
-      <div className="insights-container">
-        <div style={{ padding: '20px' }}>
-          <button 
-            onClick={() => setShowMCPTest(false)}
-            style={{
-              marginBottom: '20px',
-              padding: '8px 16px',
-              background: '#6c757d',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
-            ← Back to Chat
-          </button>
-          <MCPTest />
-        </div>
-      </div>
-    );
   }
 
   return (
@@ -306,6 +1002,51 @@ const Reports = () => {
                     return <div key={index}>{line}</div>
                   })}
                 </div>
+                
+                {/* Render charts if available */}
+                {message.chartConfigs && message.chartConfigs.length > 0 && (
+                  <div className="message-charts">
+                    {message.chartConfigs.map((chartConfig, index) => (
+                      <div key={index} className="message-chart">
+                        <div className="chart-container">
+                          {chartConfig.description && (
+                            <p className="chart-description">{chartConfig.description}</p>
+                          )}
+                          {chartConfig.type === 'pie' && (
+                            <Pie data={chartConfig.data} options={chartConfig.options} />
+                          )}
+                          {chartConfig.type === 'doughnut' && (
+                            <Doughnut data={chartConfig.data} options={chartConfig.options} />
+                          )}
+                          {chartConfig.type === 'bar' && (
+                            <Bar data={chartConfig.data} options={chartConfig.options} />
+                          )}
+                          {chartConfig.type === 'line' && (
+                            <Line data={chartConfig.data} options={chartConfig.options} />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Fallback: Render single chart for backward compatibility */}
+                {!message.chartConfigs && message.chartConfig && (
+                  <div className="message-chart">
+                    <div className="chart-container">
+                      {message.chartConfig.type === 'pie' && (
+                        <Pie data={message.chartConfig.data} options={message.chartConfig.options} />
+                      )}
+                      {message.chartConfig.type === 'bar' && (
+                        <Bar data={message.chartConfig.data} options={message.chartConfig.options} />
+                      )}
+                      {message.chartConfig.type === 'line' && (
+                        <Line data={message.chartConfig.data} options={message.chartConfig.options} />
+                      )}
+                    </div>
+                </div>
+                )}
+                
                 <div className="message-timestamp">{message.timestamp}</div>
               </div>
             </div>
@@ -326,7 +1067,7 @@ const Reports = () => {
               className="send-button"
               disabled={!inputValue.trim() || isLoading}
             >
-              <Send size={18} />
+              <ArrowUp size={18} />
             </button>
         </div>
       </div>

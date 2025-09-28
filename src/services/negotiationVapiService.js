@@ -8,9 +8,9 @@ class NegotiationVapiService {
     
     // Twilio configuration
     this.twilioConfig = {
-      accountSid: process.env.REACT_APP_TWILIO_ACCOUNT_SID,
-      authToken: process.env.REACT_APP_TWILIO_AUTH_TOKEN,
-      twilioNumber: process.env.REACT_APP_TWILIO_PHONE_NUMBER,
+      accountSid: import.meta.env.REACT_APP_TWILIO_ACCOUNT_SID,
+      authToken: import.meta.env.REACT_APP_TWILIO_AUTH_TOKEN,
+      twilioNumber: import.meta.env.REACT_APP_TWILIO_PHONE_NUMBER,
       sellerNumber: null // Will be set when forwarding
     };
     

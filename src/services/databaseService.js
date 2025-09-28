@@ -298,31 +298,61 @@ export class DatabaseService {
       // Handle GROUP BY queries
       if (lowerQuery.includes('group by')) {
         if (lowerQuery.includes('group by category')) {
-          console.log('Fetching data for GROUP BY category query...')
-          const { data, error } = await this.client.from(this.tableName).select('category, margin_percent')
-          
-          if (error) {
-            console.error('Supabase GROUP BY error:', error)
-            throw new Error(`Database error: ${error.message}`)
-          }
-          
-          // Group by category and calculate averages
-          const grouped = {}
-          data?.forEach(item => {
-            const category = item.category || 'Unknown'
-            if (!grouped[category]) {
-              grouped[category] = { total: 0, count: 0 }
+          // Check if this is a COUNT query
+          if (lowerQuery.includes('count(*)')) {
+            console.log('Fetching data for GROUP BY category COUNT query...')
+            const { data, error } = await this.client.from(this.tableName).select('category')
+            
+            if (error) {
+              console.error('Supabase GROUP BY COUNT error:', error)
+              throw new Error(`Database error: ${error.message}`)
             }
-            grouped[category].total += parseFloat(item.margin_percent) || 0
-            grouped[category].count += 1
-          })
-          
-          const result = Object.keys(grouped).map(category => ({
-            category,
-            avg_margin: grouped[category].total / grouped[category].count
-          }))
-          
-          return result.slice(0, 10) // Limit to 10 categories
+            
+            // Group by category and count items
+            const grouped = {}
+            data?.forEach(item => {
+              const category = item.category || 'Unknown'
+              if (!grouped[category]) {
+                grouped[category] = 0
+              }
+              grouped[category] += 1
+            })
+            
+            const result = Object.keys(grouped).map(category => ({
+              category,
+              count: grouped[category]
+            })).sort((a, b) => b.count - a.count) // Sort by count descending
+            
+            console.log('GROUP BY category count results:', result)
+            return result.slice(0, 10) // Limit to 10 categories
+          } else {
+            // Original margin calculation logic
+            console.log('Fetching data for GROUP BY category margin query...')
+            const { data, error } = await this.client.from(this.tableName).select('category, margin_percent')
+            
+            if (error) {
+              console.error('Supabase GROUP BY error:', error)
+              throw new Error(`Database error: ${error.message}`)
+            }
+            
+            // Group by category and calculate averages
+            const grouped = {}
+            data?.forEach(item => {
+              const category = item.category || 'Unknown'
+              if (!grouped[category]) {
+                grouped[category] = { total: 0, count: 0 }
+              }
+              grouped[category].total += parseFloat(item.margin_percent) || 0
+              grouped[category].count += 1
+            })
+            
+            const result = Object.keys(grouped).map(category => ({
+              category,
+              avg_margin: grouped[category].total / grouped[category].count
+            }))
+            
+            return result.slice(0, 10) // Limit to 10 categories
+          }
         }
       }
 
@@ -394,15 +424,51 @@ export class DatabaseService {
   }
 
 
+  // Method to fetch the entire table for analysis
+  async getFullTableData() {
+    try {
+      console.log('Fetching full table data for analysis...')
+      const { data, error } = await this.client.from(this.tableName).select('*')
+      
+      if (error) {
+        console.error('Error fetching full table:', error)
+        throw new Error(`Failed to fetch table data: ${error.message}`)
+      }
+      
+      console.log(`Fetched ${data?.length || 0} rows from ${this.tableName}`)
+      return data || []
+    } catch (error) {
+      console.error('Error in getFullTableData:', error)
+      throw error
+    }
+  }
+
   // Helper method to validate SQL queries (basic security)
   validateQuery(sqlQuery) {
-    const dangerousKeywords = ['drop', 'delete', 'update', 'insert', 'alter', 'create', 'truncate']
-    const lowerQuery = sqlQuery.toLowerCase()
+    const lowerQuery = sqlQuery.toLowerCase().trim()
     
-    for (const keyword of dangerousKeywords) {
-      if (lowerQuery.includes(keyword)) {
-        throw new Error(`Query contains dangerous keyword: ${keyword}`)
+    // Check for dangerous SQL operations at the beginning of statements
+    const dangerousPatterns = [
+      /^\s*drop\s+/i,
+      /^\s*delete\s+/i,
+      /^\s*update\s+/i,
+      /^\s*insert\s+/i,
+      /^\s*alter\s+/i,
+      /^\s*create\s+/i,
+      /^\s*truncate\s+/i,
+      /;\s*(drop|delete|update|insert|alter|create|truncate)\s+/i
+    ]
+    
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(lowerQuery)) {
+        const match = lowerQuery.match(pattern)
+        throw new Error(`Query contains dangerous operation: ${match[0].trim()}`)
       }
+    }
+    
+    // Ensure query starts with SELECT
+    if (!lowerQuery.startsWith('select')) {
+      throw new Error('Only SELECT queries are allowed')
     }
     
     return true

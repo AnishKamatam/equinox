@@ -1,9 +1,9 @@
 // Twilio Service for Call Forwarding and Deal Negotiation
 class TwilioService {
   constructor() {
-    this.accountSid = process.env.REACT_APP_TWILIO_ACCOUNT_SID;
-    this.authToken = process.env.REACT_APP_TWILIO_AUTH_TOKEN; 
-    this.twilioNumber = process.env.REACT_APP_TWILIO_PHONE_NUMBER;
+    this.accountSid = import.meta.env.REACT_APP_TWILIO_ACCOUNT_SID;
+    this.authToken = import.meta.env.REACT_APP_TWILIO_AUTH_TOKEN; 
+    this.twilioNumber = import.meta.env.REACT_APP_TWILIO_PHONE_NUMBER;
     this.sellerNumber = '+1'; // Your number - to be set
     
     console.log('📞 Twilio Service initialized:', {
