@@ -2,10 +2,12 @@ import React, { useState } from 'react'
 import { Send, Package, BarChart3, Truck } from 'lucide-react'
 import { geminiService } from '../services/geminiService'
 import { databaseService } from '../services/databaseService'
+import VoiceChat from '../components/VoiceChat'
+import VoiceResultsDisplay from '../components/VoiceResultsDisplay'
 
 const Reports = () => {
   const [messages, setMessages] = useState([])
-  
+  const [voiceResult, setVoiceResult] = useState(null)
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
@@ -81,6 +83,34 @@ const Reports = () => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSendMessage()
+    }
+  }
+
+  // Handle voice messages from Vapi
+  const handleVoiceMessage = (voiceMessage) => {
+    if (voiceMessage.type === 'voice-query') {
+      const userMessage = {
+        id: Date.now(),
+        type: 'user',
+        content: `🎤 ${voiceMessage.query}`,
+        timestamp: new Date().toLocaleTimeString(),
+        isVoice: true
+      }
+      
+      const aiMessage = {
+        id: Date.now() + 1,
+        type: 'ai',
+        content: voiceMessage.analysis,
+        timestamp: new Date().toLocaleTimeString(),
+        sqlQuery: voiceMessage.query,
+        queryResults: voiceMessage.result,
+        isVoice: true
+      }
+      
+      setMessages(prev => [...prev, userMessage, aiMessage])
+      
+      // Set the voice result for visual display
+      setVoiceResult(voiceMessage.result)
     }
   }
 
@@ -238,12 +268,18 @@ const Reports = () => {
           ))}
         </div>
         
+        {voiceResult && <VoiceResultsDisplay result={voiceResult} />}
+        
         <div className="chat-input-container">
+          <VoiceChat 
+            onVoiceMessage={handleVoiceMessage}
+            className="voice-chat-component"
+          />
           <textarea
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Ask about your inventory data..."
+            placeholder="Ask about your inventory data... or use voice 🎤"
             className="chat-input"
             rows="1"
           />
