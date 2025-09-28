@@ -1,11 +1,13 @@
 import React, { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
 import AuthModal from './Auth/AuthModal'
 
 const Header = () => {
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [authMode, setAuthMode] = useState('login')
   const { user, signOut, loading } = useAuth()
+  const { theme, toggleTheme } = useTheme()
 
   const handleLogin = () => {
     setAuthMode('login')
@@ -48,6 +50,13 @@ const Header = () => {
             <a href="#contact" className="nav-link">Contact</a>
           </nav>
           <div className="nav-actions">
+            <button 
+              className="theme-toggle"
+              onClick={toggleTheme}
+              title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+            >
+              {theme === 'light' ? '🌙' : '☀️'}
+            </button>
             {user ? (
               <>
                 <span className="user-email">Welcome, {user.email}</span>
