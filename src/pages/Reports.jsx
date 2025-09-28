@@ -1,17 +1,14 @@
 import React, { useState } from 'react'
-import { Send, Package, BarChart3, Truck } from 'lucide-react'
+import { Send, Package, BarChart3, Truck, TestTube } from 'lucide-react'
 import { geminiService } from '../services/geminiService'
 import { databaseService } from '../services/databaseService'
-import VoiceChat from '../components/VoiceChat'
-import VoiceResultsDisplay from '../components/VoiceResultsDisplay'
+import MCPTest from '../components/MCPTest'
 
 const Reports = () => {
   const [messages, setMessages] = useState([])
-  const [voiceResult, setVoiceResult] = useState(null)
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [isVoiceLoading, setIsVoiceLoading] = useState(false)
-  const [currentVoiceQuery, setCurrentVoiceQuery] = useState('')
+  const [showMCPTest, setShowMCPTest] = useState(false)
 
   const handleSendMessage = async () => {
     if (inputValue.trim() && !isLoading) {
@@ -88,43 +85,6 @@ const Reports = () => {
     }
   }
 
-  // Handle voice messages from Vapi
-  const handleVoiceMessage = (voiceMessage) => {
-    if (voiceMessage.type === 'voice-query-start') {
-      // Show loading state when voice query starts processing
-      setIsVoiceLoading(true)
-      setCurrentVoiceQuery(voiceMessage.query)
-      setVoiceResult(null) // Clear previous result
-      
-      const userMessage = {
-        id: Date.now(),
-        type: 'user',
-        content: `🎤 ${voiceMessage.query}`,
-        timestamp: new Date().toLocaleTimeString(),
-        isVoice: true
-      }
-      setMessages(prev => [...prev, userMessage])
-      
-    } else if (voiceMessage.type === 'voice-query') {
-      // Query completed, show results
-      setIsVoiceLoading(false)
-      
-      const aiMessage = {
-        id: Date.now() + 1,
-        type: 'ai',
-        content: voiceMessage.analysis,
-        timestamp: new Date().toLocaleTimeString(),
-        sqlQuery: voiceMessage.query,
-        queryResults: voiceMessage.result,
-        isVoice: true
-      }
-      
-      setMessages(prev => [...prev, aiMessage])
-      
-      // Set the voice result for visual display
-      setVoiceResult(voiceMessage.result)
-    }
-  }
 
   const suggestionBoxes = [
     {
@@ -141,13 +101,19 @@ const Reports = () => {
     },
     {
       id: 3,
-      title: "Optimize supply chain",
-      description: "AI-powered recommendations for efficiency",
-      icon: Truck
+      title: "Test MCP Connection",
+      description: "Test voice agent access to Supabase via MCP",
+      icon: TestTube
     }
   ]
 
   const handleSuggestionClick = async (suggestion) => {
+    // Handle MCP Test specially
+    if (suggestion.title === "Test MCP Connection") {
+      setShowMCPTest(true);
+      return;
+    }
+    
     // Create user message
     const userMessage = {
       id: Date.now(),
@@ -195,7 +161,7 @@ const Reports = () => {
         const topSellers = results[5]
         const lowStockProducts = results[6]
         
-        aiResponse = `# 📊 Inventory Summary\n\n## Overall Stats\n- **Total Items**: ${totalItems} products in inventory\n- **Average Stock Level**: ${avgStockLevel} units per item\n- **Total Inventory Value**: $${totalValue}\n\n## Stock Health\n- **✅ Good Stock**: ${totalItems - lowStockItems - outOfStock} items well-stocked\n- **⚠️ Low Stock**: ${lowStockItems} items need reordering\n- **❌ Out of Stock**: ${outOfStock} items completely depleted\n\n## Top Performers\n${topSellers.map((item, i) => `${i + 1}. **${item.item_name}** - ${item.sales_velocity} velocity`).join('\n')}\n\n## Items Needing Attention\n${lowStockProducts.map(item => `• **${item.item_name}** - Only ${item.quantity} left (threshold: ${item.threshold})`).join('\n')}\n\n**Recommendation**: Focus on restocking the ${lowStockItems} low-stock items to avoid stockouts.`
+        aiResponse = `# Inventory Summary\n\n## Overall Stats\n- Total Items: ${totalItems} products in inventory\n- Average Stock Level: ${avgStockLevel} units per item\n- Total Inventory Value: $${totalValue}\n\n## Stock Health\n- Good Stock: ${totalItems - lowStockItems - outOfStock} items well-stocked\n- Low Stock: ${lowStockItems} items need reordering\n- Out of Stock: ${outOfStock} items completely depleted\n\n## Top Performers\n${topSellers.map((item, i) => `${i + 1}. ${item.item_name} - ${item.sales_velocity} velocity`).join('\n')}\n\n## Items Needing Attention\n${lowStockProducts.map(item => `• ${item.item_name} - Only ${item.quantity} left (threshold: ${item.threshold})`).join('\n')}\n\nRecommendation: Focus on restocking the ${lowStockItems} low-stock items to avoid stockouts.`
         
       } else {
         // For other suggestions, use the normal Gemini flow
@@ -234,6 +200,30 @@ const Reports = () => {
     }
   }
 
+  if (showMCPTest) {
+    return (
+      <div className="insights-container">
+        <div style={{ padding: '20px' }}>
+          <button 
+            onClick={() => setShowMCPTest(false)}
+            style={{
+              marginBottom: '20px',
+              padding: '8px 16px',
+              background: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            ← Back to Chat
+          </button>
+          <MCPTest />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="insights-container">
       <div className="chat-container">
@@ -262,17 +252,59 @@ const Reports = () => {
             <div key={message.id} className={`message ${message.type}`}>
               <div className="message-content">
                 <div className="message-text">
-                  {message.content.split('\n').map((line, index) => (
-                    <div key={index}>
-                      {line.includes('**') ? (
-                        <span dangerouslySetInnerHTML={{
+                  {message.content.split('\n').map((line, index) => {
+                    // Handle different markdown elements
+                    if (line.startsWith('# ')) {
+                      return <h1 key={index} className="message-h1">{line.substring(2)}</h1>
+                    }
+                    if (line.startsWith('## ')) {
+                      return <h2 key={index} className="message-h2">{line.substring(3)}</h2>
+                    }
+                    if (line.startsWith('### ')) {
+                      return <h3 key={index} className="message-h3">{line.substring(4)}</h3>
+                    }
+                    if (line.startsWith('- ')) {
+                      const content = line.substring(2)
+                      return (
+                        <div key={index} className="message-bullet" 
+                             dangerouslySetInnerHTML={{
+                               __html: content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                             }} 
+                        />
+                      )
+                    }
+                    if (line.match(/^\d+\./)) {
+                      return (
+                        <div key={index} className="message-numbered" 
+                             dangerouslySetInnerHTML={{
+                               __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                             }} 
+                        />
+                      )
+                    }
+                    if (line.startsWith('• ')) {
+                      const content = line.substring(2)
+                      return (
+                        <div key={index} className="message-attention-item" 
+                             dangerouslySetInnerHTML={{
+                               __html: content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                             }} 
+                        />
+                      )
+                    }
+                    if (line.trim() === '') {
+                      return <div key={index} className="message-spacer"></div>
+                    }
+                    // Handle bold text for all other lines
+                    if (line.includes('**')) {
+                      return (
+                        <div key={index} dangerouslySetInnerHTML={{
                           __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                         }} />
-                      ) : (
-                        line
-                      )}
-                    </div>
-                  ))}
+                      )
+                    }
+                    return <div key={index}>{line}</div>
+                  })}
                 </div>
                 <div className="message-timestamp">{message.timestamp}</div>
               </div>
@@ -280,24 +312,12 @@ const Reports = () => {
           ))}
         </div>
         
-        {(voiceResult || isVoiceLoading) && 
-          <VoiceResultsDisplay 
-            result={voiceResult} 
-            isLoading={isVoiceLoading} 
-            query={currentVoiceQuery} 
-          />
-        }
-        
         <div className="chat-input-container">
-          <VoiceChat 
-            onVoiceMessage={handleVoiceMessage}
-            className="voice-chat-component"
-          />
           <textarea
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Ask about your inventory data... or use voice 🎤"
+            placeholder="Ask about your inventory data..."
             className="chat-input"
             rows="1"
           />

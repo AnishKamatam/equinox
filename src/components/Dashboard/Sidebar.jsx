@@ -7,7 +7,7 @@ const Sidebar = () => {
     { path: '/home', label: 'Home', icon: Home },
     { path: '/inventory', label: 'Inventory', icon: Package },
     { path: '/finances', label: 'Finances', icon: DollarSign },
-    { path: '/insights', label: 'Insights', icon: BarChart3 }
+    { path: '/insights', label: 'Insights', icon: BarChart3 },
   ]
 
   return (
