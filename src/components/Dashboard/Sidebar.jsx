@@ -4,10 +4,10 @@ import { Home, Package, DollarSign, BarChart3, Settings } from 'lucide-react'
 
 const Sidebar = () => {
   const navItems = [
-    { path: '/home', label: 'Home', icon: Home },
-    { path: '/inventory', label: 'Inventory', icon: Package },
-    { path: '/finances', label: 'Finances', icon: DollarSign },
-    { path: '/insights', label: 'Insights', icon: BarChart3 },
+    { path: '/home', label: 'Home', subheading: 'Overview & Key Insights', icon: Home },
+    { path: '/inventory', label: 'Inventory', subheading: 'Stock Levels & Product Data', icon: Package },
+    { path: '/finances', label: 'Finances', subheading: 'Revenue, Costs & Margins', icon: DollarSign },
+    { path: '/insights', label: 'Insights', subheading: 'Trends & Reports', icon: BarChart3 },
   ]
 
   return (
@@ -27,7 +27,10 @@ const Sidebar = () => {
                 }
               >
                 <item.icon className="nav-icon" size={18} />
-                <span className="nav-label">{item.label}</span>
+                <div className="nav-content">
+                  <span className="nav-label">{item.label}</span>
+                  <span className="nav-subheading">{item.subheading}</span>
+                </div>
               </NavLink>
             </li>
           ))}
@@ -42,7 +45,10 @@ const Sidebar = () => {
           }
         >
           <Settings className="nav-icon" size={18} />
-          <span className="nav-label">Settings</span>
+          <div className="nav-content">
+            <span className="nav-label">Settings</span>
+            <span className="nav-subheading">System Configuration</span>
+          </div>
         </NavLink>
       </div>
     </aside>

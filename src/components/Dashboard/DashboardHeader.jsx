@@ -8,10 +8,23 @@ const DashboardHeader = () => {
     await signOut()
   }
 
+  const getTimeBasedGreeting = () => {
+    const hour = new Date().getHours()
+    const userName = user?.email?.split('@')[0] || 'User'
+    
+    if (hour < 12) {
+      return `Good Morning, ${userName}`
+    } else if (hour < 17) {
+      return `Good Afternoon, ${userName}`
+    } else {
+      return `Good Evening, ${userName}`
+    }
+  }
+
   return (
     <header className="dashboard-header">
       <div className="dashboard-header-content">
-        <h1 className="dashboard-title">Welcome back</h1>
+        <h1 className="dashboard-title">{getTimeBasedGreeting()}</h1>
         <div className="dashboard-user-menu">
           <span className="user-info">{user?.email}</span>
           <button onClick={handleSignOut} className="sign-out-btn">
