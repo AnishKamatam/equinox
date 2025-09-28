@@ -161,7 +161,7 @@ const Reports = () => {
         const topSellers = results[5]
         const lowStockProducts = results[6]
         
-        aiResponse = `# 📊 Inventory Summary\n\n## Overall Stats\n- **Total Items**: ${totalItems} products in inventory\n- **Average Stock Level**: ${avgStockLevel} units per item\n- **Total Inventory Value**: $${totalValue}\n\n## Stock Health\n- **✅ Good Stock**: ${totalItems - lowStockItems - outOfStock} items well-stocked\n- **⚠️ Low Stock**: ${lowStockItems} items need reordering\n- **❌ Out of Stock**: ${outOfStock} items completely depleted\n\n## Top Performers\n${topSellers.map((item, i) => `${i + 1}. **${item.item_name}** - ${item.sales_velocity} velocity`).join('\n')}\n\n## Items Needing Attention\n${lowStockProducts.map(item => `• **${item.item_name}** - Only ${item.quantity} left (threshold: ${item.threshold})`).join('\n')}\n\n**Recommendation**: Focus on restocking the ${lowStockItems} low-stock items to avoid stockouts.`
+        aiResponse = `# Inventory Summary\n\n## Overall Stats\n- Total Items: ${totalItems} products in inventory\n- Average Stock Level: ${avgStockLevel} units per item\n- Total Inventory Value: $${totalValue}\n\n## Stock Health\n- Good Stock: ${totalItems - lowStockItems - outOfStock} items well-stocked\n- Low Stock: ${lowStockItems} items need reordering\n- Out of Stock: ${outOfStock} items completely depleted\n\n## Top Performers\n${topSellers.map((item, i) => `${i + 1}. ${item.item_name} - ${item.sales_velocity} velocity`).join('\n')}\n\n## Items Needing Attention\n${lowStockProducts.map(item => `• ${item.item_name} - Only ${item.quantity} left (threshold: ${item.threshold})`).join('\n')}\n\nRecommendation: Focus on restocking the ${lowStockItems} low-stock items to avoid stockouts.`
         
       } else {
         // For other suggestions, use the normal Gemini flow
@@ -252,17 +252,59 @@ const Reports = () => {
             <div key={message.id} className={`message ${message.type}`}>
               <div className="message-content">
                 <div className="message-text">
-                  {message.content.split('\n').map((line, index) => (
-                    <div key={index}>
-                      {line.includes('**') ? (
-                        <span dangerouslySetInnerHTML={{
+                  {message.content.split('\n').map((line, index) => {
+                    // Handle different markdown elements
+                    if (line.startsWith('# ')) {
+                      return <h1 key={index} className="message-h1">{line.substring(2)}</h1>
+                    }
+                    if (line.startsWith('## ')) {
+                      return <h2 key={index} className="message-h2">{line.substring(3)}</h2>
+                    }
+                    if (line.startsWith('### ')) {
+                      return <h3 key={index} className="message-h3">{line.substring(4)}</h3>
+                    }
+                    if (line.startsWith('- ')) {
+                      const content = line.substring(2)
+                      return (
+                        <div key={index} className="message-bullet" 
+                             dangerouslySetInnerHTML={{
+                               __html: content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                             }} 
+                        />
+                      )
+                    }
+                    if (line.match(/^\d+\./)) {
+                      return (
+                        <div key={index} className="message-numbered" 
+                             dangerouslySetInnerHTML={{
+                               __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                             }} 
+                        />
+                      )
+                    }
+                    if (line.startsWith('• ')) {
+                      const content = line.substring(2)
+                      return (
+                        <div key={index} className="message-attention-item" 
+                             dangerouslySetInnerHTML={{
+                               __html: content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                             }} 
+                        />
+                      )
+                    }
+                    if (line.trim() === '') {
+                      return <div key={index} className="message-spacer"></div>
+                    }
+                    // Handle bold text for all other lines
+                    if (line.includes('**')) {
+                      return (
+                        <div key={index} dangerouslySetInnerHTML={{
                           __html: line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                         }} />
-                      ) : (
-                        line
-                      )}
-                    </div>
-                  ))}
+                      )
+                    }
+                    return <div key={index}>{line}</div>
+                  })}
                 </div>
                 <div className="message-timestamp">{message.timestamp}</div>
               </div>
