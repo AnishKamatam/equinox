@@ -1,8 +1,38 @@
 import React from 'react';
-import { BarChart3, Package, TrendingDown, TrendingUp, AlertTriangle } from 'lucide-react';
+import { BarChart3, Package, TrendingDown, TrendingUp, AlertTriangle, Brain, Loader2 } from 'lucide-react';
 
-const VoiceResultsDisplay = ({ result }) => {
-  if (!result) return null;
+const VoiceResultsDisplay = ({ result, isLoading, query }) => {
+  if (!result && !isLoading) return null;
+
+  const renderLoadingState = () => (
+    <div className="voice-results-display">
+      <div className="results-header">
+        <Brain size={20} />
+        <span>AI Thinking...</span>
+      </div>
+      <div className="voice-loading-container">
+        <div className="thinking-animation">
+          <Loader2 size={32} className="spinning" />
+        </div>
+        <div className="thinking-text">
+          <h3>Analyzing your query</h3>
+          <p>"{query}"</p>
+          <div className="thinking-dots">
+            <span>Processing inventory data</span>
+            <div className="dots">
+              <span>.</span>
+              <span>.</span>
+              <span>.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (isLoading) {
+    return renderLoadingState();
+  }
 
   const renderSummaryResult = (data) => (
     <div className="voice-results-grid">

@@ -10,6 +10,8 @@ const Reports = () => {
   const [voiceResult, setVoiceResult] = useState(null)
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isVoiceLoading, setIsVoiceLoading] = useState(false)
+  const [currentVoiceQuery, setCurrentVoiceQuery] = useState('')
 
   const handleSendMessage = async () => {
     if (inputValue.trim() && !isLoading) {
@@ -88,7 +90,12 @@ const Reports = () => {
 
   // Handle voice messages from Vapi
   const handleVoiceMessage = (voiceMessage) => {
-    if (voiceMessage.type === 'voice-query') {
+    if (voiceMessage.type === 'voice-query-start') {
+      // Show loading state when voice query starts processing
+      setIsVoiceLoading(true)
+      setCurrentVoiceQuery(voiceMessage.query)
+      setVoiceResult(null) // Clear previous result
+      
       const userMessage = {
         id: Date.now(),
         type: 'user',
@@ -96,6 +103,11 @@ const Reports = () => {
         timestamp: new Date().toLocaleTimeString(),
         isVoice: true
       }
+      setMessages(prev => [...prev, userMessage])
+      
+    } else if (voiceMessage.type === 'voice-query') {
+      // Query completed, show results
+      setIsVoiceLoading(false)
       
       const aiMessage = {
         id: Date.now() + 1,
@@ -107,7 +119,7 @@ const Reports = () => {
         isVoice: true
       }
       
-      setMessages(prev => [...prev, userMessage, aiMessage])
+      setMessages(prev => [...prev, aiMessage])
       
       // Set the voice result for visual display
       setVoiceResult(voiceMessage.result)
@@ -268,7 +280,13 @@ const Reports = () => {
           ))}
         </div>
         
-        {voiceResult && <VoiceResultsDisplay result={voiceResult} />}
+        {(voiceResult || isVoiceLoading) && 
+          <VoiceResultsDisplay 
+            result={voiceResult} 
+            isLoading={isVoiceLoading} 
+            query={currentVoiceQuery} 
+          />
+        }
         
         <div className="chat-input-container">
           <VoiceChat 

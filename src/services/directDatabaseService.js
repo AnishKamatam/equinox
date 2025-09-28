@@ -213,7 +213,7 @@ class DirectDatabaseService {
       }
     }
 
-    if (lowerQuery.includes('top selling') || lowerQuery.includes('best seller')) {
+    if (lowerQuery.includes('top selling') || lowerQuery.includes('best seller') || lowerQuery.includes('best selling')) {
       const items = await this.getTopSellingItems()
       return {
         type: 'top_selling',

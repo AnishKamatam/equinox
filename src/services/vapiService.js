@@ -1,5 +1,5 @@
 import Vapi from '@vapi-ai/web';
-import { directDatabaseService } from './directDatabaseService.js';
+import { intelligentQueryService } from './intelligentQueryService.js';
 
 class VapiService {
   constructor() {
@@ -57,28 +57,22 @@ class VapiService {
         
         try {
           const userQuery = message.functionCall.parameters.query;
-          console.log('Processing voice query:', userQuery);
+          console.log('Processing intelligent voice query:', userQuery);
           
-          // Process voice query through direct database service
-          const queryResult = await directDatabaseService.processQuery(userQuery);
-          console.log('Query result:', queryResult);
-          
-          // Generate conversational response
-          let responseText = `${queryResult.summary}. `;
-          
-          if (queryResult.type === 'low_stock' && queryResult.data.length > 0) {
-            responseText += `The items that need reordering are: ${queryResult.data.slice(0, 3).map(item => 
-              `${item.item_name} by ${item.brand} with only ${item.quantity} left`).join(', ')}.`;
-          } else if (queryResult.type === 'summary' && queryResult.data) {
-            const data = queryResult.data;
-            responseText += `You have ${data.totalItems} items worth $${data.totalValue.toFixed(0)}. ${data.lowStockCount} items are low on stock and ${data.outOfStockCount} are completely out of stock.`;
-          } else if (queryResult.type === 'expensive' && queryResult.data.length > 0) {
-            responseText += `Your most expensive items are: ${queryResult.data.slice(0, 3).map(item => 
-              `${item.item_name} at $${item.selling_price}`).join(', ')}.`;
-          } else if (queryResult.type === 'suppliers' && queryResult.data.length > 0) {
-            responseText += `Your suppliers include: ${queryResult.data.slice(0, 3).map(supplier => 
-              `${supplier.name} with ${supplier.avgRating} rating`).join(', ')}.`;
+          // Trigger loading state
+          if (this.onMessageCallback) {
+            this.onMessageCallback({
+              type: 'voice-query-start',
+              query: userQuery
+            });
           }
+          
+          // Process voice query through intelligent query service
+          const queryResult = await intelligentQueryService.processIntelligentQuery(userQuery);
+          console.log('Intelligent query result:', queryResult);
+          
+          // Use the AI-generated conversational response
+          const responseText = queryResult.analysis || queryResult.summary;
           
           const response = {
             type: 'function-call-result',
@@ -86,22 +80,24 @@ class VapiService {
             result: responseText
           };
           
-          console.log('Sending response to Vapi:', response);
+          console.log('Sending intelligent response to Vapi:', response);
           this.vapi.send(response);
           
-          // Trigger callback for UI update
+          // Trigger callback for UI update with results
           if (this.onMessageCallback) {
             this.onMessageCallback({
               type: 'voice-query',
               query: userQuery,
               result: queryResult, // Pass the full structured result
-              analysis: responseText
+              analysis: responseText,
+              confidence: queryResult.confidence,
+              reasoning: queryResult.reasoning
             });
           }
           
           return; // Exit early if we handled a function call
         } catch (error) {
-          console.error('Error processing voice query:', error);
+          console.error('Error processing intelligent voice query:', error);
           
           const errorResponse = {
             type: 'function-call-result',
@@ -110,6 +106,17 @@ class VapiService {
           };
           
           this.vapi.send(errorResponse);
+          
+          // Clear loading state on error
+          if (this.onMessageCallback) {
+            this.onMessageCallback({
+              type: 'voice-query',
+              query: message.functionCall.parameters.query,
+              result: null,
+              analysis: 'Error processing query'
+            });
+          }
+          
           return;
         }
       }
@@ -117,10 +124,18 @@ class VapiService {
       // Handle other message types if needed
       if (message.type === 'transcript' && message.role === 'user' && message.transcriptType === 'final') {
         console.log('User said:', message.transcript);
-        // Manually trigger database query if function calling isn't working
+        // Manually trigger intelligent query if function calling isn't working
         try {
-          const queryResult = await directDatabaseService.processQuery(message.transcript);
-          console.log('Manual query result:', queryResult);
+          // Trigger loading state
+          if (this.onMessageCallback) {
+            this.onMessageCallback({
+              type: 'voice-query-start',
+              query: message.transcript
+            });
+          }
+          
+          const queryResult = await intelligentQueryService.processIntelligentQuery(message.transcript);
+          console.log('Manual intelligent query result:', queryResult);
           
           // Trigger callback for UI update
           if (this.onMessageCallback) {
@@ -128,11 +143,23 @@ class VapiService {
               type: 'voice-query',
               query: message.transcript,
               result: queryResult,
-              analysis: queryResult.summary
+              analysis: queryResult.analysis || queryResult.summary,
+              confidence: queryResult.confidence,
+              reasoning: queryResult.reasoning
             });
           }
         } catch (error) {
-          console.error('Error in manual query processing:', error);
+          console.error('Error in manual intelligent query processing:', error);
+          
+          // Clear loading state on error
+          if (this.onMessageCallback) {
+            this.onMessageCallback({
+              type: 'voice-query',
+              query: message.transcript,
+              result: null,
+              analysis: 'Error processing query'
+            });
+          }
         }
       }
       
@@ -152,39 +179,53 @@ class VapiService {
     // Assistant configuration with database querying functions
     const assistant = {
       name: "Inventory Assistant",
-      firstMessage: "Hello! I can help you with your inventory. Ask me about low stock, sales data, or any inventory questions.",
+      firstMessage: "Hi! I'm your inventory assistant. What would you like to know?",
       model: {
         provider: "openai",
-        model: "gpt-3.5-turbo",
-        temperature: 0.7,
+        model: "gpt-3.5-turbo", 
+        temperature: 0.8,
+        maxTokens: 150,
         messages: [{
           role: "system",
-          content: `You are an inventory management assistant with access to a Supabase database table called 'Inventory' containing 380+ items.
+          content: `You are a friendly, efficient inventory management assistant with access to a comprehensive database of 380+ inventory items.
 
-The database has these key fields:
-- item_name, brand, category, subcategory, description
-- quantity (current stock), threshold (reorder level), initial_quantity  
-- unit_cost, selling_price, margin_percent, total_stock_value
-- sales_velocity, sold_today, weekly_sales_volume
-- supplier_name, supplier_contact, supplier_rating
-- status (active/discontinued), stock_health, days_out_of_stock
-- expiry_date, expired, organic
-- location_in_store, storage_type
+KEY BEHAVIORS:
+- Keep responses concise and conversational
+- Always use the queryDatabase function for inventory questions
+- Be proactive in suggesting related insights
+- Use natural language, avoid technical jargon
+- Allow interruptions gracefully
 
-When users ask inventory questions, ALWAYS use the queryDatabase function. Examples:
-- "low stock items" → query for items where quantity < threshold
-- "inventory summary" → query for totals, averages, counts
-- "expensive products" → query ordered by selling_price
-- "by category" → group by category
-- "supplier info" → query supplier fields
+AVAILABLE DATA:
+- Complete inventory with items, brands, categories
+- Stock levels, thresholds, and reorder points
+- Sales data, velocities, and performance metrics  
+- Financial data: costs, prices, margins, values
+- Supplier information and ratings
+- Storage locations and product details
 
-Be conversational and explain the data clearly.`
+RESPONSE STYLE:
+- Brief but informative
+- Natural conversation flow
+- Actionable insights
+- Professional yet friendly tone
+
+When users ask anything inventory-related, immediately use queryDatabase function.`
         }]
       },
       voice: {
         provider: "11labs",
-        voiceId: "21m00Tcm4TlvDq8ikWAM"
+        voiceId: "21m00Tcm4TlvDq8ikWAM",
+        stability: 0.7,
+        similarityBoost: 0.8,
+        style: 0.2
       },
+      // Make assistant more interruptible
+      backgroundSound: "none",
+      backchannelingEnabled: false,
+      endCallOnSilence: false,
+      responseDelaySeconds: 0.3,
+      llmRequestDelaySeconds: 0.1,
       functions: [
         {
           name: "queryDatabase",
