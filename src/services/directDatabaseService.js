@@ -4,7 +4,15 @@ class DirectDatabaseService {
   constructor() {
     this.tableName = 'Inventory'
     this.client = supabaseAdmin || supabase
-    console.log('DirectDatabaseService initialized with client:', this.client ? 'Connected' : 'Not connected')
+    this.projectRef = 'mblgpbuvsykauaybypdf'
+    this.dashboardUrl = 'https://supabase.com/dashboard/project/mblgpbuvsykauaybypdf/editor/17293'
+    
+    console.log('📡 DirectDatabaseService initialized:', {
+      client: this.client ? 'Connected' : 'Not connected',
+      table: this.tableName,
+      project: this.projectRef,
+      dashboardUrl: this.dashboardUrl
+    })
     this.testConnection()
   }
 
@@ -19,10 +27,19 @@ class DirectDatabaseService {
         return false
       }
       
-      console.log('DirectDatabaseService successfully connected. Row count:', count)
+      console.log(`✅ DirectDatabaseService successfully connected to ${this.tableName} table:`, {
+        rowCount: count,
+        project: this.projectRef,
+        table: this.tableName,
+        dashboardUrl: this.dashboardUrl
+      })
       return true
     } catch (err) {
-      console.error('DirectDatabaseService connection test failed:', err)
+      console.error(`❌ DirectDatabaseService connection test failed for ${this.tableName} table:`, {
+        error: err,
+        project: this.projectRef,
+        dashboardUrl: this.dashboardUrl
+      })
       return false
     }
   }

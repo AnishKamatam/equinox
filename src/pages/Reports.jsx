@@ -1,12 +1,14 @@
 import React, { useState } from 'react'
-import { Send, Package, BarChart3, Truck } from 'lucide-react'
+import { Send, Package, BarChart3, Truck, TestTube } from 'lucide-react'
 import { geminiService } from '../services/geminiService'
 import { databaseService } from '../services/databaseService'
+import MCPTest from '../components/MCPTest'
 
 const Reports = () => {
   const [messages, setMessages] = useState([])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [showMCPTest, setShowMCPTest] = useState(false)
 
   const handleSendMessage = async () => {
     if (inputValue.trim() && !isLoading) {
@@ -99,13 +101,19 @@ const Reports = () => {
     },
     {
       id: 3,
-      title: "Optimize supply chain",
-      description: "AI-powered recommendations for efficiency",
-      icon: Truck
+      title: "Test MCP Connection",
+      description: "Test voice agent access to Supabase via MCP",
+      icon: TestTube
     }
   ]
 
   const handleSuggestionClick = async (suggestion) => {
+    // Handle MCP Test specially
+    if (suggestion.title === "Test MCP Connection") {
+      setShowMCPTest(true);
+      return;
+    }
+    
     // Create user message
     const userMessage = {
       id: Date.now(),
@@ -190,6 +198,30 @@ const Reports = () => {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (showMCPTest) {
+    return (
+      <div className="insights-container">
+        <div style={{ padding: '20px' }}>
+          <button 
+            onClick={() => setShowMCPTest(false)}
+            style={{
+              marginBottom: '20px',
+              padding: '8px 16px',
+              background: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            ← Back to Chat
+          </button>
+          <MCPTest />
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -46,6 +46,7 @@ const Finances = () => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [reorderTransactions, setReorderTransactions] = useState([])
   const [transactionLoading, setTransactionLoading] = useState(false)
+  const [notification, setNotification] = useState(null)
 
   useEffect(() => {
     fetchFinancialMetrics()
@@ -524,7 +525,7 @@ const Finances = () => {
     }
   }
 
-  const handleTransactionAction = (transactionId, action) => {
+  const handleTransactionAction = async (transactionId, action) => {
     setReorderTransactions(prev => 
       prev.map(transaction => 
         transaction.id === transactionId 
@@ -533,7 +534,54 @@ const Finances = () => {
       )
     )
     
-    // Here you could also send the approval/denial to your backend
+    // If approved, start supplier negotiation
+    if (action === 'approved') {
+      const transaction = reorderTransactions.find(t => t.id === transactionId)
+      if (transaction) {
+        try {
+          console.log(`🤝 Starting supplier negotiation for approved transaction: ${transactionId}`)
+          
+          const { supplierNegotiationService } = await import('../services/supplierNegotiationService.js')
+          await supplierNegotiationService.startSupplierNegotiation({
+            itemName: transaction.itemName,
+            quantity: transaction.suggestedQuantity,
+            supplier: transaction.supplier
+          })
+          
+          console.log('✅ Supplier negotiation initiated successfully')
+          
+          // Show success notification after 30 seconds
+          setTimeout(() => {
+            setNotification({
+              type: 'success',
+              title: 'Order Confirmed!',
+              message: `${transaction.itemName} (${transaction.suggestedQuantity} units) from ${transaction.supplier} will ship in 2-3 business days. Total cost: $${transaction.totalCost.toFixed(2)}`
+            })
+            
+            // Auto-hide notification after 10 seconds
+            setTimeout(() => {
+              setNotification(null)
+            }, 10000)
+          }, 30000) // 30 seconds delay
+          
+        } catch (error) {
+          console.error('❌ Error starting supplier negotiation:', error)
+          
+          // Show error notification immediately
+          setNotification({
+            type: 'error',
+            title: 'Call Failed',
+            message: 'Error starting supplier negotiation: ' + error.message
+          })
+          
+          // Auto-hide error notification after 8 seconds
+          setTimeout(() => {
+            setNotification(null)
+          }, 8000)
+        }
+      }
+    }
+    
     console.log(`Transaction ${transactionId} ${action}`)
   }
 
@@ -567,6 +615,24 @@ const Finances = () => {
 
   return (
     <div className="page-content">
+      {/* Notification Popup */}
+      {notification && (
+        <div className={`notification-popup ${notification.type}`}>
+          <div className="notification-content">
+            <div className="notification-header">
+              <h4 className="notification-title">{notification.title}</h4>
+              <button 
+                className="notification-close"
+                onClick={() => setNotification(null)}
+              >
+                ×
+              </button>
+            </div>
+            <p className="notification-message">{notification.message}</p>
+          </div>
+        </div>
+      )}
+      
       {/* Month Navigation - Top Right */}
       <div className="month-navigation-compact">
         <button 
