@@ -2,16 +2,11 @@ import React, { useState } from 'react'
 import { Send, Package, BarChart3, Truck } from 'lucide-react'
 import { geminiService } from '../services/geminiService'
 import { databaseService } from '../services/databaseService'
-import VoiceChat from '../components/VoiceChat'
-import VoiceResultsDisplay from '../components/VoiceResultsDisplay'
 
 const Reports = () => {
   const [messages, setMessages] = useState([])
-  const [voiceResult, setVoiceResult] = useState(null)
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [isVoiceLoading, setIsVoiceLoading] = useState(false)
-  const [currentVoiceQuery, setCurrentVoiceQuery] = useState('')
 
   const handleSendMessage = async () => {
     if (inputValue.trim() && !isLoading) {
@@ -88,43 +83,6 @@ const Reports = () => {
     }
   }
 
-  // Handle voice messages from Vapi
-  const handleVoiceMessage = (voiceMessage) => {
-    if (voiceMessage.type === 'voice-query-start') {
-      // Show loading state when voice query starts processing
-      setIsVoiceLoading(true)
-      setCurrentVoiceQuery(voiceMessage.query)
-      setVoiceResult(null) // Clear previous result
-      
-      const userMessage = {
-        id: Date.now(),
-        type: 'user',
-        content: `🎤 ${voiceMessage.query}`,
-        timestamp: new Date().toLocaleTimeString(),
-        isVoice: true
-      }
-      setMessages(prev => [...prev, userMessage])
-      
-    } else if (voiceMessage.type === 'voice-query') {
-      // Query completed, show results
-      setIsVoiceLoading(false)
-      
-      const aiMessage = {
-        id: Date.now() + 1,
-        type: 'ai',
-        content: voiceMessage.analysis,
-        timestamp: new Date().toLocaleTimeString(),
-        sqlQuery: voiceMessage.query,
-        queryResults: voiceMessage.result,
-        isVoice: true
-      }
-      
-      setMessages(prev => [...prev, aiMessage])
-      
-      // Set the voice result for visual display
-      setVoiceResult(voiceMessage.result)
-    }
-  }
 
   const suggestionBoxes = [
     {
@@ -280,24 +238,12 @@ const Reports = () => {
           ))}
         </div>
         
-        {(voiceResult || isVoiceLoading) && 
-          <VoiceResultsDisplay 
-            result={voiceResult} 
-            isLoading={isVoiceLoading} 
-            query={currentVoiceQuery} 
-          />
-        }
-        
         <div className="chat-input-container">
-          <VoiceChat 
-            onVoiceMessage={handleVoiceMessage}
-            className="voice-chat-component"
-          />
           <textarea
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Ask about your inventory data... or use voice 🎤"
+            placeholder="Ask about your inventory data..."
             className="chat-input"
             rows="1"
           />
